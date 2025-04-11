@@ -1,16 +1,31 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync/atomic"
+
+	"github.com/frankielb/chirpy/internal/database"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 func main() {
+	// db stuff
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	dbQueries := database.New(db)
 	// init counter
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
+		DB:             dbQueries,
 	}
 	// init router
 	mux := http.NewServeMux()
@@ -37,8 +52,7 @@ func main() {
 		Addr:    ":8080",
 		Handler: mux,
 	}
-	err := server.ListenAndServe()
-	if err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -46,6 +60,7 @@ func main() {
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	DB             *database.Queries
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
