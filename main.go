@@ -18,18 +18,19 @@ func main() {
 	// shows where files are on my mach
 	fileServer := http.FileServer(http.Dir("."))
 	// the /app isnt used in paths on mach, so remove
-	handler := http.StripPrefix("/app", fileServer)
+	fsHandler := http.StripPrefix("/app", fileServer)
 	// setup file server with wrapper
-	mux.Handle("/app/", apiCfg.middlewareMetricsInc(handler))
+	mux.Handle("/app/", apiCfg.middlewareMetricsInc(fsHandler))
 
 	// register handlers for various things
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-	mux.HandleFunc("/metrics", apiCfg.metricsHandler)
-	mux.HandleFunc("/reset", apiCfg.metricsReset)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.metricsHandler)
+	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
+	mux.HandleFunc("POST /api/validate_chirp", validateHandler)
 
 	// create the server
 	server := &http.Server{
@@ -58,10 +59,18 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 }
 
 func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintf(w, "Hits: %d", cfg.fileserverHits.Load())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf(
+		`<html>
+		  <body>
+			<h1>Welcome, Chirpy Admin</h1>
+			<p>Chirpy has been visited %d times!</p>
+		  </body>
+		</html>`,
+		cfg.fileserverHits.Load())))
 }
-func (cfg *apiConfig) metricsReset(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 	cfg.fileserverHits.Store(0)
 	w.WriteHeader(http.StatusOK)
 }
