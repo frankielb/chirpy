@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 func validateHandler(w http.ResponseWriter, r *http.Request) {
@@ -22,11 +23,26 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// good
-	type validOut struct {
-		Valid bool `json:"valid"`
+	//check swearwords
+	profanes := map[string]bool{
+		"kerfuffle": true,
+		"sharbert":  true,
+		"fornax":    true,
 	}
-	respondJSON(w, http.StatusOK, validOut{
-		Valid: true,
+	words := strings.Split(parameter.Body, " ")
+	for i, word := range words {
+		lower := strings.ToLower(word)
+		if profanes[lower] {
+			words[i] = "****"
+		}
+	}
+	cleanText := strings.Join(words, " ")
+
+	// good
+	type cleanOut struct {
+		CleanBody string `json:"cleaned_body"`
+	}
+	respondJSON(w, http.StatusOK, cleanOut{
+		CleanBody: cleanText,
 	})
 }
