@@ -10,6 +10,14 @@ import (
 	"github.com/google/uuid"
 )
 
+type chirpJSON struct {
+	Id        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    string    `json:"user_id"`
+}
+
 func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request) {
 	type chirpIn struct {
 		Body   string    `json:"body"`
@@ -44,14 +52,6 @@ func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request)
 	cleanText := strings.Join(words, " ")
 
 	// good
-	type cleanOut struct {
-		Id        string    `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Body      string    `json:"body"`
-		UserID    uuid.UUID `json:"user_id"`
-	}
-
 	chirpOut, err := cfg.DB.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body:   cleanText,
 		UserID: chirp.UserID,
@@ -60,13 +60,33 @@ func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request)
 		respondJSONError(w, http.StatusInternalServerError, "Couldn't create chirp", err)
 		return
 	}
-	response := cleanOut{
+	response := chirpJSON{
 		Id:        chirpOut.ID.String(),
 		CreatedAt: chirpOut.CreatedAt,
 		UpdatedAt: chirpOut.UpdatedAt,
 		Body:      chirpOut.Body,
-		UserID:    chirp.UserID,
+		UserID:    chirp.UserID.String(),
 	}
 	respondJSON(w, http.StatusCreated, response)
 
+}
+
+func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	chirps, err := cfg.DB.GetChirps(r.Context())
+	if err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "Couldn't get chirps", err)
+		return
+	}
+	responses := []chirpJSON{}
+	for _, chirp := range chirps {
+		response := chirpJSON{
+			Id:        chirp.ID.String(),
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID.String(),
+		}
+		responses = append(responses, response)
+	}
+	respondJSON(w, http.StatusOK, responses)
 }
