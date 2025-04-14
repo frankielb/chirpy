@@ -26,6 +26,7 @@ func main() {
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
 		DB:             dbQueries,
+		Platform:       os.Getenv("PLATFORM"),
 	}
 	// init router
 	mux := http.NewServeMux()
@@ -46,6 +47,7 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metricsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
 	mux.HandleFunc("POST /api/validate_chirp", validateHandler)
+	mux.HandleFunc("POST /api/users", apiCfg.createUserHandler)
 
 	// create the server
 	server := &http.Server{
@@ -61,6 +63,7 @@ func main() {
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	DB             *database.Queries
+	Platform       string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -86,6 +89,17 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 		cfg.fileserverHits.Load())))
 }
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
+	if cfg.Platform != "dev" {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 	cfg.fileserverHits.Store(0)
+	err := cfg.DB.DeleteAllUsers(r.Context())
+	if err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "Failed to reset users database", err)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("All users and server hits reset"))
+
 }
