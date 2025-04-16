@@ -168,3 +168,60 @@ func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (cfg *apiConfig) updatePswdEmlHandler(w http.ResponseWriter, r *http.Request) {
+	// find user via jwt
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondJSONError(w, http.StatusUnauthorized, "couldn't find bearer token", err)
+		return
+	}
+
+	userId, err := auth.ValidateJWT(refreshToken, cfg.Secret)
+	if err != nil {
+		respondJSONError(w, http.StatusUnauthorized, "bad token", err)
+	}
+
+	/*
+		tokenDB, err := cfg.DB.GetRefreshTokenFromToken(r.Context(), refreshToken)
+		if err != nil {
+			respondJSONError(w, http.StatusUnauthorized, "invalid token: nf", err)
+			return
+		}
+	*/
+	// read req
+	decoder := json.NewDecoder(r.Body)
+	newPwdEml := userIn{}
+	if err := decoder.Decode(&newPwdEml); err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "Couldn't decode new user", err)
+		return
+	}
+	// hash password
+	hashedPswd, err := auth.HashPassword(newPwdEml.Password)
+	if err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "couldn't hash password", err)
+		return
+	}
+	// update in DB
+	if err := cfg.DB.UpdatePswdEml(r.Context(), database.UpdatePswdEmlParams{
+		HashedPassword: hashedPswd,
+		Email:          newPwdEml.Email,
+		ID:             userId,
+	}); err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "couldn't update", err)
+		return
+	}
+	// get updated user for out
+	userOut, err := cfg.DB.GetUserByEmail(r.Context(), newPwdEml.Email)
+	if err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "didnt update", err)
+		return
+	}
+	respondJSON(w, http.StatusOK, User{
+		ID:        userOut.ID,
+		CreatedAt: userOut.CreatedAt,
+		UpdatedAt: userOut.UpdatedAt,
+		Email:     userOut.Email,
+	})
+
+}
