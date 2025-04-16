@@ -27,6 +27,7 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		DB:             dbQueries,
 		Platform:       os.Getenv("PLATFORM"),
+		Secret:         os.Getenv("SECRET"),
 	}
 	// init router
 	mux := http.NewServeMux()
@@ -68,6 +69,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	DB             *database.Queries
 	Platform       string
+	Secret         string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
