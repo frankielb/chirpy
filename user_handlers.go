@@ -56,14 +56,14 @@ func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) 
 
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	type loginRequest struct {
-		Email            string `json:"email"`
-		Password         string `json:"password"`
-		ExpiresInSeconds int    `json:"expires_in_seconds,omitempty"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		//ExpiresInSeconds int    `json:"expires_in_seconds,omitempty"`
 	}
 	type response struct {
 		User
-		Token string `json:"token"`
-		//RefreshToken string `json:refresh_token"`
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -86,9 +86,6 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	//get expire time
 	expirationTime := time.Hour
 
-	if userReq.ExpiresInSeconds > 0 && userReq.ExpiresInSeconds < 3600 {
-		expirationTime = time.Duration(userReq.ExpiresInSeconds) * time.Second
-	}
 	// make token
 	token, err := auth.MakeJWT(user.ID,
 		cfg.Secret,
@@ -98,6 +95,21 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// make refresh token
+	refresh, err := auth.MakeRefreshToken()
+	if err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "coiuldnt create auth token", err)
+		return
+	}
+	// add to db
+	if _, err := cfg.DB.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:     refresh,
+		UserID:    user.ID,
+		ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
+	}); err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "coiuldnt add re token to db", err)
+		return
+	}
 	respondJSON(w, http.StatusOK, response{
 		User: User{
 			ID:        user.ID,
@@ -105,6 +117,54 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt: user.UpdatedAt,
 			Email:     user.Email,
 		},
-		Token: token,
+		Token:        token,
+		RefreshToken: refresh,
 	})
+}
+
+func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
+	// get token from header
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondJSONError(w, http.StatusUnauthorized, "couldn't find bearer token", err)
+		return
+	}
+	// check token is in db and good
+	rTokenDB, err := cfg.DB.GetRefreshTokenFromToken(r.Context(), refreshToken)
+	if err != nil {
+		respondJSONError(w, http.StatusUnauthorized, "invalid token: nf", err)
+		return
+	}
+	if rTokenDB.ExpiresAt.Before(time.Now()) {
+		respondJSONError(w, http.StatusUnauthorized, "invalid token: exp", nil)
+		return
+	}
+	if rTokenDB.RevokedAt.Valid {
+		respondJSONError(w, http.StatusUnauthorized, "invalid token: rvkd", nil)
+		return
+	}
+	// make new jwt
+	accessToken, err := auth.MakeJWT(rTokenDB.UserID, cfg.Secret, time.Hour)
+	if err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "couldn't create access token", err)
+		return
+	}
+	// respond
+	type response struct {
+		Token string `json:"token"`
+	}
+	respondJSON(w, http.StatusOK, response{Token: accessToken})
+}
+
+func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
+	// get token from header
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondJSONError(w, http.StatusUnauthorized, "couldn't find bearer token", err)
+		return
+	}
+	if err := cfg.DB.RevokeToken(r.Context(), refreshToken); err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "couldn't revoke token", err)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
