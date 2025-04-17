@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -11,10 +13,11 @@ import (
 )
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID          uuid.UUID `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Email       string    `json:"email"`
+	IsChirpyRed bool      `json:"is_chirpy_red"`
 }
 
 type userIn struct {
@@ -46,10 +49,11 @@ func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) 
 		respondJSONError(w, http.StatusInternalServerError, "Couldn't create user", err)
 	}
 	user := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
+		ID:          dbUser.ID,
+		CreatedAt:   dbUser.CreatedAt,
+		UpdatedAt:   dbUser.UpdatedAt,
+		Email:       dbUser.Email,
+		IsChirpyRed: false,
 	}
 	respondJSON(w, http.StatusCreated, user)
 }
@@ -112,10 +116,11 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, response{
 		User: User{
-			ID:        user.ID,
-			CreatedAt: user.CreatedAt,
-			UpdatedAt: user.UpdatedAt,
-			Email:     user.Email,
+			ID:          user.ID,
+			CreatedAt:   user.CreatedAt,
+			UpdatedAt:   user.UpdatedAt,
+			Email:       user.Email,
+			IsChirpyRed: user.IsChirpyRed,
 		},
 		Token:        token,
 		RefreshToken: refresh,
@@ -182,13 +187,6 @@ func (cfg *apiConfig) updatePswdEmlHandler(w http.ResponseWriter, r *http.Reques
 		respondJSONError(w, http.StatusUnauthorized, "bad token", err)
 	}
 
-	/*
-		tokenDB, err := cfg.DB.GetRefreshTokenFromToken(r.Context(), refreshToken)
-		if err != nil {
-			respondJSONError(w, http.StatusUnauthorized, "invalid token: nf", err)
-			return
-		}
-	*/
 	// read req
 	decoder := json.NewDecoder(r.Body)
 	newPwdEml := userIn{}
@@ -218,10 +216,43 @@ func (cfg *apiConfig) updatePswdEmlHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	respondJSON(w, http.StatusOK, User{
-		ID:        userOut.ID,
-		CreatedAt: userOut.CreatedAt,
-		UpdatedAt: userOut.UpdatedAt,
-		Email:     userOut.Email,
+		ID:          userOut.ID,
+		CreatedAt:   userOut.CreatedAt,
+		UpdatedAt:   userOut.UpdatedAt,
+		Email:       userOut.Email,
+		IsChirpyRed: userOut.IsChirpyRed,
 	})
+
+}
+
+func (cfg *apiConfig) upgradeHandler(w http.ResponseWriter, r *http.Request) {
+	type data struct {
+		UserID uuid.UUID `json:"user_id"`
+	}
+	type req struct {
+		Event string `json:"event"`
+		Data  data   `json:"data"`
+	}
+	// read req
+	decoder := json.NewDecoder(r.Body)
+	request := req{}
+	if err := decoder.Decode(&request); err != nil {
+		respondJSONError(w, http.StatusInternalServerError, "Couldn't decode request", err)
+		return
+	}
+	if request.Event != "user.upgraded" {
+		respondJSON(w, http.StatusNoContent, nil)
+		return
+	}
+	// upgrade
+	if err := cfg.DB.UpgradeRedByID(r.Context(), request.Data.UserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondJSONError(w, http.StatusNotFound, "user not found", err)
+			return
+		}
+		respondJSONError(w, http.StatusInternalServerError, "Couldn't upgrade user", err)
+		return
+	}
+	respondJSON(w, http.StatusNoContent, nil)
 
 }
