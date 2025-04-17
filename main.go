@@ -28,6 +28,7 @@ func main() {
 		DB:             dbQueries,
 		Platform:       os.Getenv("PLATFORM"),
 		Secret:         os.Getenv("SECRET"),
+		PolkaKey:       os.Getenv("POLKA_KEY"),
 	}
 	// init router
 	mux := http.NewServeMux()
@@ -75,6 +76,7 @@ type apiConfig struct {
 	DB             *database.Queries
 	Platform       string
 	Secret         string
+	PolkaKey       string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {

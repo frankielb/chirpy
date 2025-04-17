@@ -226,6 +226,17 @@ func (cfg *apiConfig) updatePswdEmlHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (cfg *apiConfig) upgradeHandler(w http.ResponseWriter, r *http.Request) {
+	// check apikey
+	apikey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		respondJSONError(w, http.StatusUnauthorized, "couldn't get apiKey", err)
+		return
+	}
+	if apikey != cfg.PolkaKey {
+		respondJSONError(w, http.StatusUnauthorized, "unauthorized", err)
+		return
+	}
+
 	type data struct {
 		UserID uuid.UUID `json:"user_id"`
 	}
