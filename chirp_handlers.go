@@ -87,11 +87,26 @@ func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
-	chirps, err := cfg.DB.GetChirps(r.Context())
+	authorString := r.URL.Query().Get("author_id")
+	// uses different query if there was a author id
+	var chirps []database.Chirp
+	var err error
+	if authorString != "" {
+		authorID, errParse := uuid.Parse(authorString)
+		if errParse != nil {
+			respondJSONError(w, http.StatusInternalServerError, "dodgy id", err)
+			return
+		}
+		chirps, err = cfg.DB.GetChirpsByUser(r.Context(), authorID)
+	} else {
+		chirps, err = cfg.DB.GetChirps(r.Context())
+	}
+
 	if err != nil {
 		respondJSONError(w, http.StatusInternalServerError, "Couldn't get chirps", err)
 		return
 	}
+
 	responses := []chirpJSON{}
 	for _, chirp := range chirps {
 		response := chirpJSON{
