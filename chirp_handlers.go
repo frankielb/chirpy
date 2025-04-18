@@ -106,6 +106,17 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 		respondJSONError(w, http.StatusInternalServerError, "Couldn't get chirps", err)
 		return
 	}
+	// comes sorted by ASC default
+	sortstring := r.URL.Query().Get("sort")
+	if sortstring == "desc" {
+		left := 0
+		right := len(chirps) - 1
+		for left < right {
+			chirps[left], chirps[right] = chirps[right], chirps[left]
+			left++
+			right--
+		}
+	}
 
 	responses := []chirpJSON{}
 	for _, chirp := range chirps {
